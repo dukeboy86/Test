@@ -1,0 +1,329 @@
+package de.iabg.bns.simulation.models.radarmodel.surveillance.surveillancesector;
+
+import de.iabg.bns.common.RotationUtils;
+import de.iabg.bns.common.datadefinition.*;
+import de.iabg.bns.simulation.models.radarmodel.surveillance.AbsSurveillanceZoneVisual;
+import gov.nasa.worldwind.geom.Position;
+import gov.nasa.worldwind.geom.Vec4;
+import gov.nasa.worldwind.render.Polygon;
+import gov.nasa.worldwind.render.*;
+import gov.nasa.worldwind.render.airspaces.SphereAirspace;
+
+import java.awt.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+public class SurveillanceSectorVisual extends AbsSurveillanceZoneVisual<SurveillanceSector> {
+
+    private final int MESH_RES_X = 12;
+    private final int MESH_RES_Y = 5;
+
+    //TODO fields for visual styles properties with setters
+
+    public SurveillanceSectorVisual(
+            final SurveillanceSector zoneObject) {
+        super(zoneObject);
+    }
+
+    @Override
+    public void render(final DrawContext dc) {
+        initRender(dc);
+    }
+
+    private void initRender(final DrawContext dc) {
+        final SurveillanceSectorParameter sectorParameter = zoneObject.getParameter().getSectorParameter();
+
+        final List<Vec4[][]> surfaces = new ArrayList<>();
+
+        surfaces.add(calcMesh(sectorParameter.getMaxDistanceToTarget()));
+        surfaces.add(calcMesh(sectorParameter.getMinDistanceToTarget()));
+
+        surfaces.add(calcMeshLeft(sectorParameter));
+        surfaces.add(calcMeshRight(sectorParameter));
+
+        surfaces.add(calcMeshTop(sectorParameter));
+        surfaces.add(calcMeshBot(sectorParameter));
+
+        surfaces.forEach(s -> {
+            drawMeshVertices(s, dc);
+            drawFillingPolygons(s, dc);
+            drawEdge(s, dc);
+        });
+    }
+
+    private void drawEdge(final Vec4[][] mesh, final DrawContext dc) {
+        final List<Position> positionList = new ArrayList<>();
+
+        final BasicShapeAttributes attrs = new BasicShapeAttributes();
+        attrs.setInteriorMaterial(new Material(new Color(210, 154, 25)));
+        attrs.setInteriorOpacity(1);
+        attrs.setOutlineMaterial(new Material(new Color(210, 154, 25)));
+        attrs.setOutlineWidth(3);
+        attrs.setOutlineOpacity(1);
+        attrs.setDrawOutline(true);
+
+        //botRow
+        for (int i = 0; i < mesh.length; i++) {
+            positionList.add(Coords.getGlobe().computePositionFromPoint(mesh[i][0]));
+        }
+
+        //rightRow
+        for (int i = 0; i < mesh[0].length; i++) {
+            positionList.add(Coords.getGlobe().computePositionFromPoint(mesh[mesh.length - 1][i]));
+        }
+
+        //topRow
+        for (int i = 0; i < mesh.length; i++) {
+            positionList.add(Coords.getGlobe().computePositionFromPoint(mesh[mesh.length - 1 - i][mesh[0].length - 1]));
+        }
+
+        //leftRow
+        for (int i = 0; i < mesh[0].length; i++) {
+            positionList.add(Coords.getGlobe().computePositionFromPoint(mesh[0][mesh[0].length - 1 - i]));
+        }
+
+        final Path p = new Path(positionList);
+        p.setAttributes(attrs);
+        p.setHighlightAttributes(attrs);
+        p.render(dc);
+    }
+
+    private Vec4[][] calcMeshBot(final SurveillanceSectorParameter sectorParameter) {
+        final Spatial spatial = zoneObject.getSpatial();
+
+        final Vec4 origin = Coords.wwEcefFromPosXYZ(spatial.getPosition());
+
+        final RotXYZ rotXYZ = spatial.getRotationWorldSpace();
+        final RotRPY rotRPY = spatial.getRotationObjectSpace();
+
+        final CfgAngleRange azimuthRange = sectorParameter.getAzimuthRange();
+        final CfgAngleRange elevationRange = sectorParameter.getElevationRange();
+
+        final double maxDistanceToTarget = sectorParameter.getMaxDistanceToTarget();
+        final double minDistanceToTarget = sectorParameter.getMinDistanceToTarget();
+
+        final int n = MESH_RES_X;
+        final int m = 1;
+
+        final Vec4[][] mesh = new Vec4[n + 1][m + 1];
+
+        final double deltaYaw = azimuthRange.getUppLimit() - azimuthRange.getLowLimit();
+
+        for (int i = 0; i <= n; i++) {
+            final RotRPY rpy = rotRPY
+                    .withPitch(rotRPY.getPitch() + elevationRange.getLowLimit())
+                    .withYaw(rotRPY.getYaw() + azimuthRange.getLowLimit() + (double) i / n * deltaYaw);
+
+            final Vec4 r1 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rpy, Vec4.UNIT_X).multiply3(minDistanceToTarget)
+                            .add3(origin);
+
+            final Vec4 r2 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rpy, Vec4.UNIT_X).multiply3(maxDistanceToTarget)
+                            .add3(origin);
+            mesh[i][0] = r1;
+            mesh[i][1] = r2;
+        }
+        return mesh;
+    }
+
+    private Vec4[][] calcMeshTop(final SurveillanceSectorParameter sectorParameter) {
+        final Spatial spatial = zoneObject.getSpatial();
+
+        final Vec4 origin = Coords.wwEcefFromPosXYZ(spatial.getPosition());
+
+        final RotXYZ rotXYZ = spatial.getRotationWorldSpace();
+        final RotRPY rotRPY = spatial.getRotationObjectSpace();
+
+        final CfgAngleRange azimuthRange = sectorParameter.getAzimuthRange();
+        final CfgAngleRange elevationRange = sectorParameter.getElevationRange();
+
+        final double maxDistanceToTarget = sectorParameter.getMaxDistanceToTarget();
+        final double minDistanceToTarget = sectorParameter.getMinDistanceToTarget();
+
+        final int n = MESH_RES_X;
+        final int m = 1;
+
+        final Vec4[][] mesh = new Vec4[n + 1][m + 1];
+
+        final double deltaYaw = azimuthRange.getUppLimit() - azimuthRange.getLowLimit();
+
+        for (int i = 0; i <= n; i++) {
+            final RotRPY rpy = rotRPY
+                    .withPitch(rotRPY.getPitch() + elevationRange.getUppLimit())
+                    .withYaw(rotRPY.getYaw() + azimuthRange.getLowLimit() + (double) i / n * deltaYaw);
+
+            final Vec4 r1 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rpy, Vec4.UNIT_X).multiply3(minDistanceToTarget)
+                            .add3(origin);
+
+            final Vec4 r2 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rpy, Vec4.UNIT_X).multiply3(maxDistanceToTarget)
+                            .add3(origin);
+            mesh[i][0] = r1;
+            mesh[i][1] = r2;
+        }
+        return mesh;
+    }
+
+    private Vec4[][] calcMeshLeft(final SurveillanceSectorParameter sectorParameter) {
+        final Spatial spatial = zoneObject.getSpatial();
+
+        final Vec4 origin = Coords.wwEcefFromPosXYZ(spatial.getPosition());
+
+        final RotXYZ rotXYZ = spatial.getRotationWorldSpace();
+        final RotRPY rotRPY = spatial.getRotationObjectSpace();
+
+        final CfgAngleRange azimuthRange = sectorParameter.getAzimuthRange();
+        final CfgAngleRange elevationRange = sectorParameter.getElevationRange();
+
+        final double maxDistanceToTarget = sectorParameter.getMaxDistanceToTarget();
+        final double minDistanceToTarget = sectorParameter.getMinDistanceToTarget();
+
+        final int n = 1;
+        final int m = MESH_RES_Y;
+
+        final Vec4[][] mesh = new Vec4[n + 1][m + 1];
+
+        final double deltaPitch = elevationRange.getUppLimit() - elevationRange.getLowLimit();
+
+        for (int j = 0; j <= m; j++) {
+            final RotRPY rotRPYLL = rotRPY
+                    .withPitch(rotRPY.getPitch() + elevationRange.getLowLimit() + (double) j / m * deltaPitch)
+                    .withYaw(rotRPY.getYaw() + azimuthRange.getLowLimit());
+
+            final Vec4 r1 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rotRPYLL, Vec4.UNIT_X).multiply3(minDistanceToTarget)
+                            .add3(origin);
+
+            final Vec4 r2 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rotRPYLL, Vec4.UNIT_X).multiply3(maxDistanceToTarget)
+                            .add3(origin);
+            mesh[0][j] = r1;
+            mesh[1][j] = r2;
+        }
+        return mesh;
+    }
+
+    private Vec4[][] calcMeshRight(final SurveillanceSectorParameter sectorParameter) {
+        final Spatial spatial = zoneObject.getSpatial();
+
+        final Vec4 origin = Coords.wwEcefFromPosXYZ(spatial.getPosition());
+
+        final RotXYZ rotXYZ = spatial.getRotationWorldSpace();
+        final RotRPY rotRPY = spatial.getRotationObjectSpace();
+
+        final CfgAngleRange azimuthRange = sectorParameter.getAzimuthRange();
+        final CfgAngleRange elevationRange = sectorParameter.getElevationRange();
+
+        final double maxDistanceToTarget = sectorParameter.getMaxDistanceToTarget();
+        final double minDistanceToTarget = sectorParameter.getMinDistanceToTarget();
+
+        final int n = 1;
+        final int m = MESH_RES_Y;
+
+        final Vec4[][] mesh = new Vec4[n + 1][m + 1];
+
+        final double deltaPitch = elevationRange.getUppLimit() - elevationRange.getLowLimit();
+
+        for (int j = 0; j <= m; j++) {
+            final RotRPY rotRPYLL = rotRPY
+                    .withPitch(rotRPY.getPitch() + elevationRange.getLowLimit() + (double) j / m * deltaPitch)
+                    .withYaw(rotRPY.getYaw() + azimuthRange.getUppLimit());
+
+            final Vec4 r1 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rotRPYLL, Vec4.UNIT_X).multiply3(minDistanceToTarget)
+                            .add3(origin);
+
+            final Vec4 r2 =
+                    RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rotRPYLL, Vec4.UNIT_X).multiply3(maxDistanceToTarget)
+                            .add3(origin);
+            mesh[0][j] = r1;
+            mesh[1][j] = r2;
+        }
+        return mesh;
+    }
+
+    private void drawMeshVertices(final Vec4[][] mesh, final DrawContext dc) {
+        final BasicShapeAttributes attrs = new BasicShapeAttributes();
+        attrs.setInteriorMaterial(new Material(new Color(210, 25, 25)));
+        attrs.setInteriorOpacity(1);
+        attrs.setOutlineMaterial(new Material(new Color(210, 25, 25)));
+        attrs.setOutlineWidth(3);
+        attrs.setOutlineOpacity(1);
+
+        for (int u = 0; u < mesh.length; u++) {
+            for (int v = 0; v < mesh[u].length; v++) {
+                final SphereAirspace s = new SphereAirspace();
+                final Position p = Coords.getGlobe().computePositionFromPoint(mesh[u][v]);
+                s.setLocation(p);
+                s.setAltitude(p.getAltitude());
+                s.setRadius(15);
+                s.setAttributes(attrs);
+                s.render(dc);
+            }
+        }
+    }
+
+    private void drawFillingPolygons(final Vec4[][] mesh, final DrawContext dc) {
+        final BasicShapeAttributes attrs = new BasicShapeAttributes();
+        attrs.setInteriorMaterial(new Material(new Color(210, 154, 25)));
+        attrs.setInteriorOpacity(0.3);
+        attrs.setDrawOutline(false);
+
+        for (int col = 0; col < mesh.length - 1; col++) {
+            for (int row = 0; row < mesh[col].length - 1; row++) {
+                final Position[] positions = new Position[4];
+
+                positions[0] = Coords.getGlobe().computePositionFromPoint(mesh[col][row]);
+                positions[1] = Coords.getGlobe().computePositionFromPoint(mesh[col + 1][row]);
+                positions[2] = Coords.getGlobe().computePositionFromPoint(mesh[col + 1][row + 1]);
+                positions[3] = Coords.getGlobe().computePositionFromPoint(mesh[col][row + 1]);
+
+                final Polygon p = new Polygon(Arrays.asList(positions));
+                p.setAttributes(attrs);
+                p.setHighlightAttributes(attrs);
+                p.render(dc);
+            }
+        }
+    }
+
+    private Vec4[][] calcMesh(final double distance) {
+        final Spatial spatial = zoneObject.getSpatial();
+
+        final Vec4 origin = Coords.wwEcefFromPosXYZ(spatial.getPosition());
+
+        final RotXYZ rotXYZ = spatial.getRotationWorldSpace();
+        final RotRPY rotRPY = spatial.getRotationObjectSpace();
+
+        final SurveillanceSectorParameter sectorParameter = zoneObject.getParameter().getSectorParameter();
+        final CfgAngleRange azimuthRange = sectorParameter.getAzimuthRange();
+        final CfgAngleRange elevationRange = sectorParameter.getElevationRange();
+
+        final double maxDistanceToTarget = sectorParameter.getMaxDistanceToTarget();
+        final double minDistanceToTarget = sectorParameter.getMinDistanceToTarget();
+
+        final int n = MESH_RES_X;
+        final int m = MESH_RES_Y;
+
+        final Vec4[][] mesh = new Vec4[n + 1][m + 1];
+
+        final double deltaYaw = azimuthRange.getUppLimit() - azimuthRange.getLowLimit();
+        final double deltaPitch = elevationRange.getUppLimit() - elevationRange.getLowLimit();
+
+        for (int i = 0; i <= n; i++) {
+            for (int j = 0; j <= m; j++) {
+                final RotRPY rotRPYLL = rotRPY
+                        .withPitch(rotRPY.getPitch() + elevationRange.getLowLimit() + (double) j / m * deltaPitch)
+                        .withYaw(rotRPY.getYaw() + azimuthRange.getLowLimit() + (double) i / n * deltaYaw);
+
+                final Vec4 r =
+                        RotationUtils.getRotatedVecFromRotRPY(rotXYZ, rotRPYLL, Vec4.UNIT_X).multiply3(distance)
+                                .add3(origin);
+                mesh[i][j] = r;
+            }
+        }
+        return mesh;
+    }
+}
